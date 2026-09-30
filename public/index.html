@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GitHub Repo Explorer</title>
+<style>
+  :root {
+    --bg: #0d1117; --card: #161b22; --ink: #e6edf3; --muted: #8b949e;
+    --accent: #2f81f7; --good: #3fb950; --line: #30363d;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; background: var(--bg); color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: flex; justify-content: center; padding: 24px;
+  }
+  main { width: 100%; max-width: 760px; }
+  h1 { font-size: 1.5rem; }
+  .muted { color: var(--muted); font-size: .9rem; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  input, button {
+    font: inherit; color: var(--ink); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;
+  }
+  input { flex: 1; min-width: 180px; }
+  button { cursor: pointer; }
+  button.primary { background: var(--accent); color: #0d1117; font-weight: 600; border-color: var(--accent); }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 14px 16px; margin-top: 12px;
+  }
+  .repo { display: block; text-decoration: none; color: var(--ink); }
+  .repo:hover { border-color: var(--accent); }
+  .repo h3 { margin: 0 0 4px; color: var(--accent); font-size: 1.05rem; }
+  .repo .desc { color: var(--muted); }
+  .badges { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; color: var(--muted); font-size: .85rem; }
+  .badge { padding: 2px 8px; border: 1px solid var(--line); border-radius: 999px; }
+  .badge.star { color: #e3b341; border-color: #e3b34144; }
+  .badge.lang { color: var(--accent); border-color: var(--accent); }
+  .error { color: #ff7b72; }
+  .spinner { color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>GitHub Repo Explorer</h1>
+  <p class="muted">Search public repositories directly through the GitHub API (no token needed).</p>
+
+  <section class="row">
+    <input id="q" type="search" placeholder="Try: pandas, node cli, machine learning…" autocomplete="off">
+    <select id="limit">
+      <option value="5">5</option>
+      <option value="10" selected>10</option>
+      <option value="15">15</option>
+      <option value="20">20</option>
+    </select>
+    <button id="go" class="primary">Search</button>
+  </section>
+
+  <section id="status" class="muted"></section>
+  <section id="results"></section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+function openCard(repo) {
+  const div = document.createElement('a');
+  div.className = 'card repo';
+  div.href = repo.htmlUrl;
+  div.target = '_blank';
+  div.rel = 'noopener';
+  const topics = (repo.topics || []).slice(0, 4)
+    .map((t) => `<span class="badge">#${t}</span>`).join('');
+
+  const badges = [
+    `<span class="badge star">&#9733; ${repo.stars}</span>`,
+    `<span class="badge">${repo.forks} forks</span>`,
+    repo.language ? `<span class="badge lang">${repo.language}</span>` : '',
+    repo.license ? `<span class="badge">${repo.license}</span>` : '',
+    `<span class="badge">${repo.openIssues} issues</span>`,
+  ].filter(Boolean).join(' ');
+
+  div.innerHTML =
+    `<h3>${escapeHtml(repo.fullName)}</h3>` +
+    (repo.description ? `<div class="desc">${escapeHtml(repo.description)}</div>` : '') +
+    `<div class="badges">${badges}${topics}</div>`;
+
+  div.addEventListener('click', (e) => e.stopPropagation());
+  $('results').appendChild(div);
+}
+
+function escapeHtml(s) {
+  const div = document.createElement('div');
+  div.textContent = String(s === null || s === undefined ? '' : s);
+  return div.innerHTML;
+}
+
+function setStatus(msg, isError) {
+  $('status').innerHTML = msg ? (isError ? `<span class="error">${msg}</span>` : msg) : '';
+}
+
+async function doSearch() {
+  const q = $('q').value.trim();
+  if (!q) { setStatus('Type a search query first.', true); return; }
+  const limit = $('limit').value;
+  $('results').innerHTML = '';
+  setStatus('Searching…');
+  try {
+    const res = await fetch(`/api/search?q=${encodeURIComponent(q)}&limit=${limit}`);
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'search failed');
+    if (data.items.length === 0) {
+      setStatus(`No repositories found for "${q}".`);
+      return;
+    }
+    setStatus(`Found ${data.total} repositories for "${q}". Showing ${data.items.length}:`);
+    data.items.forEach(openCard);
+  } catch (err) {
+    setStatus('Search failed: ' + err.message, true);
+  }
+}
+
+$('go').addEventListener('click', doSearch);
+$('q').addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch(); });
+$('q').focus();
+</script>
+</body>
+</html>
